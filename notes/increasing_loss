@@ -1,0 +1,78 @@
+embedding_dims = 100
+i_vec = torch.nn.Embedding(vocabulary_size, embedding_dims, padding_idx=0).float()
+o_vec = torch.nn.Embedding(vocabulary_size, embedding_dims, padding_idx=0).float()
+num_epochs = 15
+learning_rate = 0.025
+batch_size = 300
+negative_samples = 25
+weight_dist = create_distribution(idx_pairs)
+
+torch.manual_seed(123)
+
+i_vec.weight = torch.nn.Parameter(torch.cat([torch.zeros(1, embedding_dims), 
+                                       torch.FloatTensor(vocabulary_size - 1, 
+                                          embedding_dims).uniform_(-0.5 / embedding_dims, 0.5 / embedding_dims)]))
+o_vec.weight = torch.nn.Parameter(torch.cat([torch.zeros(1, embedding_dims), 
+                                       torch.FloatTensor(vocabulary_size - 1, 
+                                          embedding_dims).uniform_(-0.5 / embedding_dims, 0.5 / embedding_dims)]))
+
+
+i_vec.weight.requires_grad = True
+o_vec.weight.requires_grad = True
+
+i_vectors = torch.LongTensor()
+o_vectors = torch.LongTensor()
+
+optimizer = torch.optim.Adam([i_vec.weight, o_vec.weight], lr=learning_rate)
+
+loss_val = 0
+
+for epoch in range(num_epochs):
+    print(f"Epoch:{epoch}")
+    i_words = []
+    o_words = []
+    n_words = []
+
+    for idx, words in enumerate(idx_pairs, 1):
+        i_words.append(words[0])
+        o_words.append(words[1])
+
+        if idx % batch_size == 0:
+            #n_words = torch.multinomial(weight_dist, batch_size * window_size * 2 * negative_samples, replacement=True).view(batch_size, -1)
+            #print(n_words.shape)
+            i_vectors = i_vec(torch.LongTensor(i_words)).unsqueeze(2)
+            #print(i_vectors.shape)
+            o_vectors = o_vec(torch.LongTensor(o_words))
+            #print(o_vectors.shape)
+            #n_vectors = o_vec(n_words).neg()
+            l_vectors = o_vec(torch.LongTensor(i_words)).unsqueeze(1)
+            #print(i_vectors.shape)
+            #print(l_vectors.shape)
+            
+            lloss = torch.bmm(l_vectors, i_vectors)
+                        
+            #oloss = torch.bmm(o_vectors, i_vectors).squeeze()
+            #print(oloss.data)
+            lloss = F.log_softmax(lloss, dim=0)
+            #print(lloss.shape)
+            #print(o_vectors.shape)
+            #loss = F.nll_loss(lloss.view(1,-1), o_vectors)
+            #print(n_vectors.shape)
+            
+            #nloss = torch.bmm(n_vectors, o_vectors).squeeze().sigmoid().log().view(-1, window_size * 2, negative_samples).sum(2).mean(1)
+            
+            #loss = -(oloss + nloss).mean()
+            #loss = -(oloss).mean()
+            loss = -(lloss).mean()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+        
+            loss_val += loss
+
+            i_words = []
+            o_words = []
+            n_words = []
+
+    print("loss: " + str(float(loss_val.data/(len(idx_pairs)/batch_size))))
+    loss_val = 0
